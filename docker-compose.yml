@@ -7,17 +7,26 @@ services:
       - "8080:8080"
     volumes:
       - cockroach-data:/var/lib/cockroach/
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health?ready=1"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
 
   nakama:
     image: heroiclabs/nakama:3.38.0
     depends_on:
-      - cockroachdb
+      cockroachdb:
+        condition: service_healthy
     entrypoint:
       - "/bin/sh"
       - "-ecx"
-      - >
-        /nakama/nakama migrate up --database.address root@cocakroachdb:26257 &&
-        exec /nakama/nakama --name nakama --database.address root@cockroachdb:26257 --logger.level INFO
+      - |
+        /nakama/nakama migrate up --database.address root@cockroachdb:26257
+        exec /nakama/nakama \
+          --name nakama \
+          --database.address root@cockroachdb:26257 \
+          --logger.level INFO
     ports:
       - "7350:7350"
       - "7351:7351"
