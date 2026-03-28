@@ -13,6 +13,13 @@ function App() {
 
       console.log("connected user", session.user_id)
 
+      // create websocket connection
+      const socket = client.createSocket()
+
+      await socket.connect(session, true)
+
+      console.log("socket connected")
+
     }
 
     connect()
