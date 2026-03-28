@@ -20,6 +20,10 @@ function App() {
 
       console.log("socket connected")
 
+      // create match
+      const match = await socket.createMatch()
+
+      console.log("match created", match.match_id, match)
     }
 
     connect()
