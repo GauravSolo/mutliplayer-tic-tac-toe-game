@@ -26,7 +26,8 @@ services:
         exec /nakama/nakama \
           --name nakama \
           --database.address root@cockroachdb:26257 \
-          --logger.level INFO
+          --logger.level INFO \
+          --runtime.js_entrypoint "index.js"
     ports:
       - "7350:7350"
       - "7351:7351"
@@ -35,6 +36,7 @@ services:
       - cockroachdb
     volumes:
       - nakama-data:/nakama/data
+      - ./backend:/nakama/data/modules
 
 volumes:
   cockroach-data:
