@@ -2,8 +2,8 @@
 
 A real-time, server-authoritative multiplayer Tic-Tac-Toe game built with React and Nakama.
 
-**Live URL**: _(deployment pending)_
-**Nakama Server**: _(deployment pending)_
+**Live URL**: https://mutliplayer-tic-tac-toe-game.vercel.app
+**Nakama Server**: https://68-233-113-132.nip.io
 
 ---
 
@@ -27,10 +27,11 @@ A real-time, server-authoritative multiplayer Tic-Tac-Toe game built with React 
 
 ```
 +------------------------------------------------------------------+
-|                        CLOUD / LOCAL                              |
+|                         CLOUD                                     |
 |                                                                   |
 |  +-------------------------------------------------------------+ |
-|  |                   NAKAMA SERVER (:7350)                       | |
+|  |                   NAKAMA SERVER                               | |
+|  |         Oracle Cloud VM + Caddy (SSL reverse proxy)           | |
 |  |                                                               | |
 |  |  +-------------------------+  +----------------------------+  | |
 |  |  |   BUILT-IN FEATURES     |  |   OUR CODE                 |  | |
@@ -39,9 +40,9 @@ A real-time, server-authoritative multiplayer Tic-Tac-Toe game built with React 
 |  |  |  - Authentication       |  |   matchInit()              |  | |
 |  |  |  - WebSocket mgmt      |  |     -> empty board          |  | |
 |  |  |  - Matchmaking engine   |  |                            |  | |
-|  |  |  - Leaderboards         |  |   matchJoinAttempt()       |  | |
-|  |  |  - Storage              |  |     -> max 2 players       |  | |
-|  |  |  - Session mgmt        |  |                            |  | |
+|  |  |  - Storage              |  |   matchJoinAttempt()       |  | |
+|  |  |  - Session mgmt        |  |     -> max 2 players       |  | |
+|  |  |                         |  |                            |  | |
 |  |  |                         |  |   matchJoin()              |  | |
 |  |  |                         |  |     -> assign X/O, start   |  | |
 |  |  |                         |  |                            |  | |
@@ -49,26 +50,25 @@ A real-time, server-authoritative multiplayer Tic-Tac-Toe game built with React 
 |  |  |                         |  |     -> validate moves      |  | |
 |  |  |                         |  |     -> check win/draw      |  | |
 |  |  |                         |  |     -> broadcast state     |  | |
-|  |  |                         |  |     -> handle timeouts     |  | |
 |  |  |                         |  |                            |  | |
 |  |  |                         |  |   matchLeave()             |  | |
 |  |  |                         |  |     -> forfeit on leave    |  | |
 |  |  +-------------------------+  +----------------------------+  | |
 |  +-------------------------------------------------------------+ |
 |                          |                                        |
-|                   WebSocket (:7350)                               |
+|                 WSS (via Caddy :443)                              |
 |                          |                                        |
 |              +-----------+-----------+                            |
 |              |                       |                            |
 |     +--------+--------+    +--------+--------+                   |
 |     |  PLAYER 1 (X)   |    |  PLAYER 2 (O)   |                  |
 |     |  React App       |    |  React App       |                 |
-|     |  (Browser)       |    |  (Browser)       |                 |
+|     |  (Vercel)        |    |  (Vercel)        |                 |
 |     +-----------------+    +-----------------+                   |
 |                                                                   |
 |  +-------------------------------------------------------------+ |
-|  |                 CockroachDB (:26257)                         | |
-|  |         Stores: users, leaderboards, match history           | |
+|  |                 PostgreSQL (Alpine)                           | |
+|  |         Stores: users, sessions, match history               | |
 |  +-------------------------------------------------------------+ |
 +------------------------------------------------------------------+
 ```
@@ -77,7 +77,7 @@ A real-time, server-authoritative multiplayer Tic-Tac-Toe game built with React 
 
 Nakama is a game server framework. Think of it like Express.js but for games. It provides:
 
-- **Built-in features** (no code needed): authentication, WebSockets, matchmaking, leaderboards, storage
+- **Built-in features** (no code needed): authentication, WebSockets, matchmaking, storage
 - **Custom logic** (we write this): game rules, move validation, win detection
 
 Our game logic lives in a single JavaScript file (`backend/index.js`) that Nakama loads and executes. We don't need a separate backend server.
@@ -98,12 +98,12 @@ Browser                          Nakama Server
   |<----------- connected ------------|  Ready for real-time messages
 ```
 
-**Code**: `hooks/useNakama.ts` lines 36-75
-
-### Step 2: Player Clicks "Find Match"
+### Step 2: Player Enters Name and Clicks "Find Match"
 
 ```
 Browser                          Nakama Server
+  |                                    |
+  |-- updateAccount(display_name) ---->|  Saves player name
   |                                    |
   |-- RPC: "find_match" ------------->|
   |                                    |  rpcFindMatch() runs:
@@ -120,8 +120,6 @@ Browser                          Nakama Server
   |                                    |  matchJoin(): assign mark (X=1, O=2)
   |<-- broadcastMessage(STATE) -------|  Sends game state to all players
 ```
-
-**Code**: Backend `rpcFindMatch` (line 247), `matchInit` (line 19), `matchJoin` (line 43)
 
 ### Step 3: Second Player Joins
 
@@ -159,12 +157,10 @@ Player 1                         Nakama Server                    Player 2
   |      turn: player2 }              |                              |
 ```
 
-**Code**: Backend `matchLoop` (line 94), Frontend `makeMove` in `useNakama.ts`
-
 ### Step 5: Game Ends
 
 ```
-Nakama Server detects win/draw/timeout/disconnect:
+Nakama Server detects win/draw/disconnect:
   |
   |--- broadcastMessage(DONE, { reason, winnerMark }) --->  Both Players
   |
@@ -230,7 +226,8 @@ If any line has 3 of the same non-zero mark, that player wins.
 
 ```
 lila-assessment/
-├── docker-compose.yml              # Runs Nakama + CockroachDB
+├── docker-compose.yml              # Runs Nakama + PostgreSQL
+├── .gitignore
 │
 ├── backend/
 │   └── index.js                    # ALL server game logic (loaded by Nakama)
@@ -240,20 +237,21 @@ lila-assessment/
 │       ├── matchLoop()             # Validate moves, check win, broadcast
 │       ├── matchLeave()            # Handle disconnection
 │       ├── rpcFindMatch()          # Matchmaking RPC
-│       ├── checkWinner()           # Win detection
-│       └── updateLeaderboard()     # Track wins
+│       └── checkWinner()           # Win detection
 │
 └── frontend/
     └── src/
         ├── main.tsx                # Entry point — mounts <App />
-        ├── nakamaClient.ts         # Nakama client config (host, port, key)
-        ├── constants.ts            # OpCodes + TypeScript types (shared)
+        ├── nakamaClient.ts         # Nakama client config (env-based)
+        ├── constants.ts            # OpCodes + TypeScript types
+        ├── index.css               # Tailwind CSS entry
         │
-        ├── App.tsx                 # Router: Lobby or Game screen
+        ├── App.tsx                 # Router: Name → Lobby → Game
         │
         ├── hooks/
         │   └── useNakama.ts        # All Nakama communication
         │       ├── connect()       # Auth + WebSocket
+        │       ├── setDisplayName()# Set player name
         │       ├── findMatch()     # RPC call + join
         │       ├── joinMatch()     # Join by ID
         │       ├── makeMove()      # Send move to server
@@ -262,7 +260,7 @@ lila-assessment/
         └── components/
             ├── Lobby.tsx           # "Find Match" + "Join by ID" UI
             ├── Board.tsx           # 3x3 grid (dumb component)
-            └── Game.tsx            # Board + status + player info
+            └── Game.tsx            # Board + status + player names + match ID
 ```
 
 ### Data Flow
@@ -273,12 +271,14 @@ useNakama (hook — talks to Nakama server)
     v
 App.tsx (passes data down as props)
     |
+    +---> Name Screen (enter username)
+    |
     +---> Lobby (no match yet)
     |       receives: connected, status
     |       callbacks: onFindMatch, onJoinMatch
     |
     +---> Game (in a match)
-            receives: gameState, userId, gameOver
+            receives: gameState, userId, username, players, gameOver
             callbacks: onMove, onPlayAgain
                 |
                 +---> Board (just renders cells)
@@ -297,7 +297,7 @@ Nakama requires 7 lifecycle functions for a match handler. Here's what each does
 | `matchInit` | Match is created | Sets up empty board, `playing = false` |
 | `matchJoinAttempt` | Player tries to join | Rejects if already 2 players |
 | `matchJoin` | Player successfully joins | Assigns X (first) or O (second), starts game when 2 players are in |
-| `matchLoop` | Every tick (1/second) | Processes move messages, validates, checks win/draw, handles timeouts |
+| `matchLoop` | Every tick (1/second) | Processes move messages, validates, checks win/draw |
 | `matchLeave` | Player disconnects | Other player wins by forfeit |
 | `matchTerminate` | Server shutting down | Cleanup (no-op for us) |
 | `matchSignal` | External signal received | No-op for us |
@@ -320,16 +320,19 @@ Nakama requires 7 lifecycle functions for a match handler. Here's what each does
 Handles all server communication. Components never talk to Nakama directly.
 
 - **On mount**: Authenticates with a random device ID, opens WebSocket, sets up message listener
+- **`setDisplayName()`**: Sets the player's name on the Nakama account
 - **`findMatch()`**: Calls `find_match` RPC on server, joins the returned match
 - **`joinMatch(id)`**: Joins a match by ID (for sharing with friends)
 - **`makeMove(position)`**: Sends a MOVE message to the server (position 0-8)
+- **`fetchPlayerNames()`**: Fetches display names for players via `getUsers` API
 - **`onmatchdata` listener**: Receives STATE/DONE/REJECTED messages, updates React state
 
 ### `App.tsx` — The Router
 
-Tiny component. Calls `useNakama()`, then:
-- No `matchId`? Render `<Lobby />`
-- Has `matchId`? Render `<Game />`
+Calls `useNakama()`, then shows one of three screens:
+1. No username? → Name input screen
+2. No match? → Lobby
+3. In match? → Game
 
 ### `Lobby.tsx` — Home Screen
 
@@ -340,12 +343,11 @@ Two options:
 ### `Board.tsx` — The Grid
 
 Receives `board` (9 numbers), `disabled` (boolean), `onCellClick` (function).
-Knows nothing about Nakama, matches, or game rules. Just renders cells.
+Knows nothing about Nakama, matches, or game rules. Just renders cells with classic grid lines.
 
 ### `Game.tsx` — Game Screen
 
-Combines Board + status text + match ID display + "Play Again" button.
-Figures out: am I X or O? Is it my turn? Did I win or lose?
+Shows player names (You vs Opponent), colored status bar (win/lose/draw/turn), the Board, a copyable match ID, and "Play Again" button.
 
 ---
 
@@ -364,8 +366,8 @@ docker compose up -d
 ```
 
 This starts:
-- **CockroachDB** on port 26257 (database)
-- **Nakama** on port 7350 (game server) — loads `backend/index.js` automatically
+- **PostgreSQL** (Alpine) — lightweight database
+- **Nakama** on port 7350 — loads `backend/index.js` automatically
 
 Verify it's working:
 ```bash
@@ -382,38 +384,53 @@ npm run dev
 
 Opens on http://localhost:5173
 
-### 3. Open the Nakama Admin Console (optional)
+### 3. Environment Variables
+
+The frontend reads Nakama connection settings from env vars. For local development, create `frontend/.env`:
+
+```
+VITE_NAKAMA_HOST=127.0.0.1
+VITE_NAKAMA_PORT=7350
+VITE_NAKAMA_SSL=false
+VITE_NAKAMA_KEY=defaultkey
+```
+
+### 4. Open the Nakama Admin Console (optional)
 
 http://localhost:7351
 - Username: `admin`
 - Password: `password`
 
-Here you can see active matches, connected users, and leaderboards.
-
 ---
 
 ## How to Test Multiplayer
 
-### Option A: Two Browser Tabs (quickest)
+### Option A: Live (deployed)
 
-1. Open http://localhost:5173 in **Tab 1**
-2. Click **"Find Match"** — you'll see "Waiting for opponent..." and a match ID
-3. Open http://localhost:5173 in **Tab 2**
-4. Click **"Find Match"** — Tab 2 will auto-join Tab 1's match
-5. Both tabs show the board. X goes first. Click cells to play!
+1. Open https://mutliplayer-tic-tac-toe-game.vercel.app in **Tab 1**
+2. Enter a name, click **"Find Match"**
+3. Open the same URL in **Tab 2**
+4. Enter a name, click **"Find Match"** — auto-joins Tab 1's match
+5. Play! X goes first.
 
 ### Option B: Share Match ID
 
-1. Tab 1: Click "Find Match" → copy the match ID shown at the bottom
-2. Tab 2: Paste the match ID into the input → click "Join"
+1. Tab 1: Click "Find Match" → copy the match ID at the bottom
+2. Tab 2: Paste the match ID → click "Join"
+
+### Option C: Local Development
+
+Same as above but use http://localhost:5173
 
 ### What to verify
 
+- Player names appear correctly for both players
 - Only the current player's cells are clickable
 - Clicking an occupied cell does nothing (server rejects it)
 - When someone wins, both players see the result
 - Closing a tab = other player wins (opponent left)
 - "Play Again" returns to lobby
+- Match ID is copyable
 
 ---
 
@@ -424,13 +441,13 @@ Here you can see active matches, connected users, and leaderboards.
 | Service | Image | Ports | Purpose |
 |---|---|---|---|
 | `nakama` | `heroiclabs/nakama:3.38.0` | 7350 (API/WS), 7351 (Admin), 7352 (Console gRPC) | Game server |
-| `cockroachdb` | `cockroachdb/cockroach:latest` | 26257, 8080 | Database |
+| `postgres` | `postgres:15-alpine` | 5432 | Database |
 
 ### Nakama Startup Flags
 
 | Flag | Value | Purpose |
 |---|---|---|
-| `--database.address` | `root@cockroachdb:26257` | Database connection |
+| `--database.address` | `postgres:localdb@postgres:5432/nakama` | Database connection |
 | `--logger.level` | `INFO` | Log verbosity |
 | `--runtime.js_entrypoint` | `index.js` | Our game logic file |
 
@@ -446,63 +463,72 @@ Nakama scans `/nakama/data/modules` for runtime code on startup. By mounting our
 ### Frontend Client Config (`nakamaClient.ts`)
 
 ```typescript
-const client = new Client("defaultkey", "127.0.0.1", "7350", false)
-//                         ^server key   ^host        ^port  ^no SSL
+const host = import.meta.env.VITE_NAKAMA_HOST || "127.0.0.1"
+const port = import.meta.env.VITE_NAKAMA_PORT || "7350"
+const useSSL = import.meta.env.VITE_NAKAMA_SSL === "true"
+const serverKey = import.meta.env.VITE_NAKAMA_KEY || "defaultkey"
+
+const client = new Client(serverKey, host, port, useSSL)
 ```
 
 ---
 
 ## Features
 
-### Core (Implemented)
-
 - [x] Server-authoritative game logic — all moves validated server-side
-- [x] Real-time multiplayer via WebSocket
+- [x] Real-time multiplayer via WebSocket (WSS in production)
 - [x] Matchmaking — auto find/create matches via RPC
 - [x] Manual join — share match ID with friends
 - [x] Win/draw/forfeit detection
 - [x] Player disconnect handling
-- [x] Leaderboard — tracks wins per player
-- [x] Turn timeout support (configurable per match)
+- [x] Player names — username input + display in game
 - [x] Multiple concurrent matches (each match is isolated)
-
-### Bonus
-
-- [x] Concurrent game support — Nakama handles multiple matches in parallel
-- [x] Leaderboard system — wins tracked in `tic_tac_toe_wins` leaderboard
-- [x] Timer-based mode — configurable turn timeout with auto-forfeit
+- [x] Responsive UI with Tailwind CSS (mobile-friendly)
+- [x] Copyable match ID for sharing
 
 ---
 
 ## Deployment
 
-### Backend (Nakama)
+### Current Setup
 
-Deploy to any cloud provider that supports Docker:
+- **Frontend**: Vercel (https://mutliplayer-tic-tac-toe-game.vercel.app)
+- **Backend**: Oracle Cloud free-tier VM (Ubuntu, Docker)
+- **SSL**: Caddy reverse proxy with auto Let's Encrypt certificates via nip.io
+- **Database**: PostgreSQL 15 Alpine (inside Docker)
 
-```bash
-# Example: using a remote Docker host
-docker compose -f docker-compose.yml up -d
-```
+### Backend (Oracle Cloud VM)
 
-Update `nakamaClient.ts` with the server's public IP:
-```typescript
-const client = new Client("defaultkey", "your-server-ip", "7350", false)
-```
+1. Create an always-free VM (VM.Standard.E2.1.Micro, Ubuntu)
+2. Install Docker:
+   ```bash
+   sudo apt update
+   sudo apt install -y docker.io docker-compose-v2
+   ```
+3. Copy `backend/index.js` and `docker-compose.yml` to the VM
+4. Start services:
+   ```bash
+   sudo docker compose up -d
+   ```
+5. Install Caddy for SSL:
+   ```bash
+   # Install Caddy, then configure:
+   # /etc/caddy/Caddyfile
+   68-233-113-132.nip.io {
+       reverse_proxy localhost:7350
+   }
+   ```
+6. Open ports 80, 443, 7350 in Oracle security list and VM iptables
 
-### Frontend
+### Frontend (Vercel)
 
-```bash
-cd frontend
-npm run build    # outputs to frontend/dist/
-```
-
-Deploy the `frontend/dist/` folder to any static hosting (Vercel, Netlify, S3, etc.).
-
-### Production Checklist
-
-- [ ] Change Nakama server key from `"defaultkey"` to a secure key
-- [ ] Enable HTTPS/WSS for WebSocket connections
-- [ ] Set `useSSL: true` in `nakamaClient.ts`
-- [ ] Configure proper session token expiry in Nakama
-- [ ] Set up a proper domain and DNS
+1. Connect GitHub repo to Vercel
+2. Set root directory to `frontend`
+3. Add environment variables:
+   ```
+   VITE_NAKAMA_HOST = 68-233-113-132.nip.io
+   VITE_NAKAMA_PORT = 443
+   VITE_NAKAMA_SSL = true
+   VITE_NAKAMA_KEY = defaultkey
+   ```
+4. Deploy — auto-builds on push to master
