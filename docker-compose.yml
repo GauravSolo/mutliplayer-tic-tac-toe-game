@@ -1,14 +1,16 @@
 services:
-  cockroachdb:
-    image: cockroachdb/cockroach:latest
-    command: start-single-node --insecure --store=attrs=ssd,path=/var/lib/cockroach/
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: nakama
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: localdb
     ports:
-      - "26257:26257"
-      - "8080:8080"
+      - "5432:5432"
     volumes:
-      - cockroach-data:/var/lib/cockroach/
+      - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health?ready=1"]
+      test: ["CMD", "pg_isready", "-U", "postgres"]
       interval: 3s
       timeout: 3s
       retries: 5
@@ -16,27 +18,26 @@ services:
   nakama:
     image: heroiclabs/nakama:3.38.0
     depends_on:
-      cockroachdb:
+      postgres:
         condition: service_healthy
     entrypoint:
       - "/bin/sh"
       - "-ecx"
       - |
-        /nakama/nakama migrate up --database.address root@cockroachdb:26257
+        /nakama/nakama migrate up --database.address postgres:localdb@postgres:5432/nakama
         exec /nakama/nakama \
           --name nakama \
-          --database.address root@cockroachdb:26257 \
+          --database.address postgres:localdb@postgres:5432/nakama \
           --logger.level INFO \
           --runtime.js_entrypoint "index.js"
     ports:
       - "7350:7350"
       - "7351:7351"
-    links:
-      - cockroachdb
+      - "7352:7352"
     volumes:
       - nakama-data:/nakama/data
       - ./backend:/nakama/data/modules
 
 volumes:
-  cockroach-data:
+  postgres-data:
   nakama-data:
