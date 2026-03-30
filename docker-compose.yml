@@ -31,7 +31,6 @@ services:
     ports:
       - "7350:7350"
       - "7351:7351"
-      - "7352:7352"
     links:
       - cockroachdb
     volumes:
