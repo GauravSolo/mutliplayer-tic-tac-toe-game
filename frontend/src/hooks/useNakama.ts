@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react"
 import type { MatchData, Socket, Session } from "@heroiclabs/nakama-js"
-import client from "../nakamaClient"
+import client, { useSSL } from "../nakamaClient"
 import { OpCode, type GameState, type GameOverInfo } from "../constants"
 
 export function useNakama() {
@@ -48,7 +48,7 @@ export function useNakama() {
       sessionRef.current = session
       setUserId(session.user_id!)
 
-      const socket = client.createSocket()
+      const socket = client.createSocket(useSSL)
       socketRef.current = socket
 
       socket.onmatchdata = (data: MatchData) => {
