@@ -31,7 +31,7 @@ A real-time, server-authoritative multiplayer Tic-Tac-Toe game built with React 
 |                                                                   |
 |  +-------------------------------------------------------------+ |
 |  |                   NAKAMA SERVER                               | |
-|  |         Oracle Cloud VM + Caddy (SSL reverse proxy)           | |
+|  |              VPS + HTTPS reverse proxy                         | |
 |  |                                                               | |
 |  |  +-------------------------+  +----------------------------+  | |
 |  |  |   BUILT-IN FEATURES     |  |   OUR CODE                 |  | |
@@ -493,32 +493,24 @@ const client = new Client(serverKey, host, port, useSSL)
 ### Current Setup
 
 - **Frontend**: Vercel (https://mutliplayer-tic-tac-toe-game.vercel.app)
-- **Backend**: Oracle Cloud free-tier VM (Ubuntu, Docker)
-- **SSL**: Caddy reverse proxy with auto Let's Encrypt certificates via nip.io
+- **Backend**: VPS running Docker (Nakama + PostgreSQL)
 - **Database**: PostgreSQL 15 Alpine (inside Docker)
 
-### Backend (Oracle Cloud VM)
+### Backend (VPS)
 
-1. Create an always-free VM (VM.Standard.E2.1.Micro, Ubuntu)
+1. Get a VPS with Ubuntu (any provider — AWS, GCP, DigitalOcean, etc.)
 2. Install Docker:
    ```bash
    sudo apt update
    sudo apt install -y docker.io docker-compose-v2
    ```
-3. Copy `backend/index.js` and `docker-compose.yml` to the VM
+3. Copy `backend/index.js` and `docker-compose.yml` to the server
 4. Start services:
    ```bash
    sudo docker compose up -d
    ```
-5. Install Caddy for SSL:
-   ```bash
-   # Install Caddy, then configure:
-   # /etc/caddy/Caddyfile
-   68-233-113-132.nip.io {
-       reverse_proxy localhost:7350
-   }
-   ```
-6. Open ports 80, 443, 7350 in Oracle security list and VM iptables
+5. Open port 7350 in firewall
+6. Set up HTTPS (required for Vercel since it serves over HTTPS — browsers block mixed content)
 
 ### Frontend (Vercel)
 
@@ -526,7 +518,7 @@ const client = new Client(serverKey, host, port, useSSL)
 2. Set root directory to `frontend`
 3. Add environment variables:
    ```
-   VITE_NAKAMA_HOST = 68-233-113-132.nip.io
+   VITE_NAKAMA_HOST = <your-server-domain>
    VITE_NAKAMA_PORT = 443
    VITE_NAKAMA_SSL = true
    VITE_NAKAMA_KEY = defaultkey
